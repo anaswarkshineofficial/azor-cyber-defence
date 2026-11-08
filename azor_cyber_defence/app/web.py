@@ -1,10 +1,12 @@
 import hmac
+import asyncio
+import logging
 from urllib.parse import quote
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
-from app.config import ADMIN_USERNAME, ADMIN_PASSWORD
+from app.config import ADMIN_USERNAME, ADMIN_PASSWORD, BOT_TOKEN
 from app.db import (
     init_db, list_reports, update_report, create_report, list_audit,
     create_enforcement_record, list_enforcement_records, update_enforcement_record,
@@ -61,9 +63,33 @@ class BlackshieldNoteInput(BaseModel):
     observation: str = Field(min_length=10, max_length=2000)
     confidence: str = "unverified"
 
+_telegram_task = None
+_telegram_bot = None
+
 @app.on_event("startup")
-def startup():
+async def startup():
+    global _telegram_task, _telegram_bot
     init_db()
+    if BOT_TOKEN:
+        from app.telegram_service import launch_bot
+        _telegram_task, _telegram_bot = await launch_bot()
+        logging.getLogger("azor").info("Telegram bot polling started.")
+    else:
+        logging.getLogger("azor").warning("BOT_TOKEN is not configured; Telegram bot is disabled.")
+
+@app.on_event("shutdown")
+async def shutdown():
+    global _telegram_task, _telegram_bot
+    if _telegram_task is not None:
+        _telegram_task.cancel()
+        try:
+            await _telegram_task
+        except asyncio.CancelledError:
+            pass
+        _telegram_task = None
+    if _telegram_bot is not None:
+        await _telegram_bot.session.close()
+        _telegram_bot = None
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard(_: str = Depends(require_admin)):
