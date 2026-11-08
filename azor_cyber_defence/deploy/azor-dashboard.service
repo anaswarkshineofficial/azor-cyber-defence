@@ -1,0 +1,20 @@
+[Unit]
+Description=AZOR Cyber Defence Intelligence Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=azor
+Group=azor
+WorkingDirectory=/opt/azor
+EnvironmentFile=/etc/azor/azor.env
+ExecStart=/opt/azor/venv/bin/uvicorn app.web:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/azor
+
+[Install]
+WantedBy=multi-user.target
